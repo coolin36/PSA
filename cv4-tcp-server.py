@@ -1,59 +1,24 @@
 import socket
-from enum import Enum
+from cv4_tcp_protocol import CHAT_Protocol, CONTROL_INFO
+from threading import Thread
 
 IP = "0.0.0.0"
 PORT = 9999
 USERS = list()
 
-# CHAT protocol v0.1a
-# |CONTROL_INFO|LOGIN|MESSAGE|
-# CONTROL_INFO types: LOGIN, DATA, LOGOUT, USERS
-
-class CONTROL_INFO(Enum):
-    LOGIN = "LOGIN"
-    DATA = "DATA"
-    LOGOUT = "LOGOUT"
-    USERS = "USERS"
-
-class CHAT_Protocol():
-    def __init__(self, login):
-        self._login = login
-        self._msg_template = "|{0}|{1}|{2}|"
-
-    def login(self):
-        msg = self._msg_template.format(CONTROL_INFO.LOGIN, self._login)
-        return msg.encode()
-    
-    def logout(self):
-        msg = self._msg_template.format(CONTROL_INFO.LOGOUT, self._login)
-        return msg.encode()
-    
-    def send_text(self, text):
-        msg = self._msg_template.format(CONTROL_INFO.DATA, self._login, text)
-        return msg.encode()
-    
-    def parse_msg(self, msg_bytes: bytes):
-        msg = msg_bytes.decode()
-        msg_list = msg.split("|")
-        control = msg_list[1]
-        login = msg_list[2]
-        text = msg_list[3]
-
-        if control == CONTROL_INFO.LOGIN:
-            USERS.append(login)
-            print("User {} logged in.".format(login))
-            return True
+def handle_client(client_sock):
+    while True:           
+        buffer = client_sock.recv(1000)
+        parsed_msg = protocol.parse_msg(buffer, USERS)
+        control = parsed_msg[0]
         
-        elif control == CONTROL_INFO.LOGOUT:
-            USERS.remove(login)
-            print("User {} logged out.".format(login))
-            return False
-        
-        elif control == CONTROL_INFO.DATA:
-            print("User {}: {}\n".format(login, text))
-            return True
-        
-
+        if control == CONTROL_INFO.LOGOUT:
+            client_sock.close()
+            break
+        elif control == CONTROL_INFO.USERS:
+            users = parsed_msg[1]
+            client_sock.send(users.__str__().encode())
+            continue
 
 if __name__ == "__main__":
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -64,14 +29,9 @@ if __name__ == "__main__":
 
     while True:
         (client_sock, (client_addr, client_port)) = sock.accept()
-        while True:
-            print("Client connected {}:{}.".format(client_addr, client_port))
+        print("Client connected {}:{}.".format(client_addr, client_port))
 
-            buffer = client_sock.recv(1000)
-            ret = protocol.parse_msg(buffer)
-            
-            if ret == False:
-                client_sock.close()
-                break
-
+        thread = Thread(target=handle_client, args=(client_sock,))
+        thread.start()
+        
     sock.close()
